@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 DIARIZATION_MODEL = "pyannote/speaker-diarization-community-1"
 DIARIZATION_LICENSE_URL = f"https://hf.co/{DIARIZATION_MODEL}"
+# Valeur de `language` qui laisse Whisper détecter la langue sur les 30 premières secondes.
+AUTO_LANGUAGE = "auto"
 
 
 class TranscriberError(RuntimeError):
@@ -40,7 +42,10 @@ class DiarizationAccessError(TranscriberError):
 
 @dataclass(frozen=True)
 class Options:
-    """Réglages de transcription. `num_speakers` prime sur min/max."""
+    """Réglages de transcription. `num_speakers` prime sur min/max.
+
+    `language` accepte `AUTO_LANGUAGE` pour laisser Whisper la détecter.
+    """
 
     language: str = "fr"
     model: str = "large-v3"
@@ -92,8 +97,12 @@ def _to_turns(segments: list[dict]) -> list[Turn]:
     return turns
 
 
-def run(audio_path: Path, token: str, options: Options) -> list[Turn]:
-    """Exécute le pipeline complet et renvoie les tours NON fusionnés."""
+def run(audio_path: Path, token: str, options: Options) -> tuple[list[Turn], str]:
+    """Exécute le pipeline complet.
+
+    Renvoie les tours NON fusionnés et la langue effective (détectée si
+    `options.language` vaut `AUTO_LANGUAGE`).
+    """
     import whisperx
     from whisperx.diarize import DiarizationPipeline, assign_word_speakers
 
@@ -105,7 +114,7 @@ def run(audio_path: Path, token: str, options: Options) -> list[Turn]:
         options.model,
         options.device,
         compute_type=options.compute_type,
-        language=options.language,
+        language=None if options.language == AUTO_LANGUAGE else options.language,
         use_auth_token=token,
     )
     result = model.transcribe(
@@ -116,9 +125,14 @@ def run(audio_path: Path, token: str, options: Options) -> list[Turn]:
     del model
     _free_gpu()
 
+    # Le modèle d'alignement wav2vec2 est propre à chaque langue.
+    language = result["language"]
+    if options.language == AUTO_LANGUAGE:
+        logger.info("Langue détectée : %s", language)
+
     logger.info("Alignement des timestamps au mot…")
     align_model, metadata = whisperx.load_align_model(
-        language_code=options.language, device=options.device
+        language_code=language, device=options.device
     )
     result = whisperx.align(
         result["segments"],
@@ -151,4 +165,4 @@ def run(audio_path: Path, token: str, options: Options) -> list[Turn]:
 
     logger.info("Attribution des locuteurs aux mots…")
     result = assign_word_speakers(diarization, result, fill_nearest=options.fill_nearest)
-    return _to_turns(result["segments"])
+    return _to_turns(result["segments"]), language

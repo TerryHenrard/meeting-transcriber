@@ -14,7 +14,7 @@ from pathlib import Path
 from dotenv import find_dotenv, load_dotenv
 
 from meeting_transcriber import render
-from meeting_transcriber.pipeline import Options, TranscriberError, run
+from meeting_transcriber.pipeline import AUTO_LANGUAGE, Options, TranscriberError, run
 
 logger = logging.getLogger("transcribe")
 
@@ -48,7 +48,11 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         default=None,
         help="dossier de sortie (défaut : à côté du fichier source)",
     )
-    parser.add_argument("--language", default="fr", help="langue de la réunion")
+    parser.add_argument(
+        "--language",
+        default="fr",
+        help=f"langue de la réunion (en, de…), ou « {AUTO_LANGUAGE} » pour la détecter",
+    )
     parser.add_argument("--model", default="large-v3", help="modèle Whisper")
     parser.add_argument(
         "--speakers",
@@ -141,7 +145,7 @@ def _audio_duration(path: Path) -> float:
 
 
 def _write_output(
-    merged: list[render.Turn], args: argparse.Namespace, duration: float
+    merged: list[render.Turn], args: argparse.Namespace, duration: float, language: str
 ) -> Path:
     out_dir = args.out or args.audio.parent
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -151,7 +155,7 @@ def _write_output(
         source=args.audio.name,
         duration=duration,
         model=args.model,
-        language=args.language,
+        language=language,
     )
     path.write_text(content, encoding="utf-8")
     return path
@@ -185,7 +189,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         started = time.monotonic()
-        raw = run(
+        raw, language = run(
             args.audio,
             token,
             Options(
@@ -209,7 +213,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
         merged = render.merge_turns(raw, max_gap=args.max_gap)
-        written = _write_output(merged, args, duration)
+        written = _write_output(merged, args, duration, language)
 
         speakers = render.speakers_in(merged)
         logger.info("Terminé en %s.", render.format_duration(elapsed))

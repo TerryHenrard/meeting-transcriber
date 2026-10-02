@@ -73,8 +73,9 @@ def test_end_to_end(tmp_path: Path):
     if not sample.is_file() or not token:
         pytest.skip("SAMPLE_AUDIO et HF_TOKEN requis pour le test d'intégration")
 
-    turns = run(sample, token, Options(batch_size=4))
+    turns, language = run(sample, token, Options(batch_size=4))
 
+    assert language == "fr"
     assert turns, "le pipeline doit produire au moins un tour"
     assert all(t.end >= t.start for t in turns)
     assert all(t.text.strip() for t in turns)

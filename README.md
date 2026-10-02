@@ -117,16 +117,28 @@ transcribe "reunion.m4a" --min-speakers 2 --max-speakers 6
 
 # Réunion en anglais, résultat dans un autre dossier
 transcribe "meeting.mp3" --language en --out ./transcripts
+
+# Langue inconnue : détection automatique
+transcribe "meeting.mp3" --language auto
 ```
 
 Renseigner `--speakers` est le réglage qui change le plus le résultat.
+
+**Langue.** Par défaut, l'audio est transcrit en français. Si la réunion se
+déroule dans une autre langue, précise-la : sinon Whisper risque de *traduire*
+en français au lieu de transcrire. Avec `--language auto`, la langue est détectée
+sur les 30 premières secondes, puis appliquée à tout le fichier. Cette détection
+peut donc se tromper si la réunion commence par un silence, de la musique ou une
+autre langue. La langue retenue est affichée dans la console et dans l'en-tête du
+fichier `.md`. Une réunion bilingue est transcrite dans une seule langue :
+choisis celle qui domine.
 
 ### Options
 
 | Option | Défaut | Rôle |
 |---|---|---|
 | `--out` | dossier du fichier source | dossier de sortie |
-| `--language` | `fr` | langue de la réunion (`en`, `de`, `es`…) |
+| `--language` | `fr` | langue de la réunion (`en`, `de`, `es`…), ou `auto` pour la détecter |
 | `--model` | `large-v3` | modèle Whisper (`medium`, `small`… : plus rapide, moins précis) |
 | `--speakers` | auto | nombre exact d'intervenants |
 | `--min-speakers` / `--max-speakers` | auto | fourchette |
