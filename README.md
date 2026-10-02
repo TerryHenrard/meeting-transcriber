@@ -100,10 +100,17 @@ mais demande un compte :
 ## Utilisation
 
 ```bash
-transcribe "reunion.m4a"
+transcribe "C:\Users\moi\Downloads\reunion.m4a"
 ```
 
-Le résultat est écrit à côté du fichier audio : `reunion.md`.
+Le fichier audio peut se trouver n'importe où : il suffit de donner son chemin.
+Le plus simple est de taper `transcribe ` (avec l'espace), puis de **glisser-déposer
+le fichier dans le terminal** : son chemin complet est collé automatiquement.
+Depuis le dossier qui contient le fichier, son nom seul suffit
+(`transcribe "reunion.m4a"`).
+
+Le résultat est écrit à côté du fichier audio, sous le même nom : ici
+`C:\Users\moi\Downloads\reunion.md`. Pour l'écrire ailleurs, ajoute `--out <dossier>`.
 
 Au premier lancement, les modèles (~4 Go) sont téléchargés : compte quelques
 minutes de plus.
