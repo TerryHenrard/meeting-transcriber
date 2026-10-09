@@ -106,6 +106,21 @@ def _validate(args: argparse.Namespace) -> str:
     return token
 
 
+def _gpu_supported(capability: tuple[int, int], arch_list: list[str]) -> bool:
+    """Vrai si torch embarque du code exécutable sur ce GPU.
+
+    Un binaire sm_XY tourne sur toute carte de même version majeure X et de
+    version mineure >= Y : une sm_89 exécute du sm_86, une sm_120 pas du sm_90.
+    """
+    major, minor = capability
+    for arch in arch_list:
+        if arch.startswith("sm_"):
+            digits = arch[3:].rstrip("abcdefghijklmnopqrstuvwxyz")
+            if int(digits[:-1]) == major and int(digits[-1]) <= minor:
+                return True
+    return False
+
+
 def _resolve_device(requested: str, compute_type: str) -> tuple[str, str]:
     import torch
 
@@ -115,6 +130,19 @@ def _resolve_device(requested: str, compute_type: str) -> tuple[str, str]:
             "CUDA demandé mais indisponible. Relance avec --device cpu "
             "(compte plusieurs heures sur une réunion d'une heure)."
         )
+    if available and requested in ("auto", "cuda"):
+        capability = torch.cuda.get_device_capability()
+        if not _gpu_supported(capability, torch.cuda.get_arch_list()):
+            message = (
+                f"La carte {torch.cuda.get_device_name()} (sm_{capability[0]}{capability[1]}) "
+                f"n'est pas prise en charge par PyTorch {torch.__version__}. "
+                "Mets à jour l'outil : uv tool install --reinstall "
+                "git+https://github.com/TerryHenrard/meeting-transcriber"
+            )
+            if requested == "cuda":
+                raise TranscriberError(message)
+            logger.warning(message)
+            available = False
     device = "cuda" if available and requested in ("auto", "cuda") else "cpu"
     if requested == "auto" and not available:
         logger.warning("CUDA indisponible : bascule sur le CPU, le traitement sera très lent.")
