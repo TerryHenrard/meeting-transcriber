@@ -70,7 +70,7 @@ class TestFormatTimestamp:
 class TestFormatDuration:
     @pytest.mark.parametrize(
         ("seconds", "expected"),
-        [(2636.35, "43 min 56 s"), (4323, "1 h 12 min 03 s"), (5, "0 min 05 s")],
+        [(2636.35, "43 min 56 s"), (4323, "1 h 12 min 03 s"), (65, "1 min 05 s"), (5, "5 s")],
     )
     def test_readable(self, seconds, expected):
         assert format_duration(seconds) == expected

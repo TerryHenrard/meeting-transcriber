@@ -8,14 +8,11 @@ millisecondes, pas après avoir chargé quatre gigaoctets de modèles.
 from __future__ import annotations
 
 import gc
-import logging
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from meeting_transcriber.console import Steps, adopt_library_loggers, console
 from meeting_transcriber.render import UNKNOWN_SPEAKER, Turn
-
-logger = logging.getLogger(__name__)
 
 DIARIZATION_MODEL = "pyannote/speaker-diarization-community-1"
 DIARIZATION_LICENSE_URL = f"https://hf.co/{DIARIZATION_MODEL}"
@@ -58,18 +55,6 @@ class Options:
     fill_nearest: bool = False
 
 
-def _progress_logger(label: str, step: float = 10.0) -> Callable[[float], None]:
-    """Journalise la progression tous les `step` pourcents, sans spammer."""
-    state = {"next": step}
-
-    def report(percent: float) -> None:
-        if percent >= state["next"]:
-            state["next"] = (percent // step + 1) * step
-            logger.info("  %s : %d %%", label, int(percent))
-
-    return report
-
-
 def _free_gpu() -> None:
     import torch
 
@@ -106,63 +91,64 @@ def run(audio_path: Path, token: str, options: Options) -> tuple[list[Turn], str
     import whisperx
     from whisperx.diarize import DiarizationPipeline, assign_word_speakers
 
-    logger.info("Décodage audio (ffmpeg)…")
-    audio = whisperx.load_audio(str(audio_path))
+    adopt_library_loggers()
+    steps = Steps(total=5)
 
-    logger.info("Transcription — %s, %s, %s…", options.model, options.device, options.compute_type)
-    model = whisperx.load_model(
-        options.model,
-        options.device,
-        compute_type=options.compute_type,
-        language=None if options.language == AUTO_LANGUAGE else options.language,
-        use_auth_token=token,
-    )
-    result = model.transcribe(
-        audio,
-        batch_size=options.batch_size,
-        progress_callback=_progress_logger("transcription"),
-    )
-    del model
-    _free_gpu()
+    with steps.step("Décodage audio"):
+        audio = whisperx.load_audio(str(audio_path))
+
+    with steps.step("Transcription") as report:
+        model = whisperx.load_model(
+            options.model,
+            options.device,
+            compute_type=options.compute_type,
+            language=None if options.language == AUTO_LANGUAGE else options.language,
+            use_auth_token=token,
+        )
+        result = model.transcribe(
+            audio, batch_size=options.batch_size, progress_callback=report
+        )
+        del model
+        _free_gpu()
 
     # Le modèle d'alignement wav2vec2 est propre à chaque langue.
     language = result["language"]
     if options.language == AUTO_LANGUAGE:
-        logger.info("Langue détectée : %s", language)
+        console.print(f"  Langue détectée : [bold]{language}[/]")
 
-    logger.info("Alignement des timestamps au mot…")
-    align_model, metadata = whisperx.load_align_model(
-        language_code=language, device=options.device
-    )
-    result = whisperx.align(
-        result["segments"],
-        align_model,
-        metadata,
-        audio,
-        options.device,
-        progress_callback=_progress_logger("alignement"),
-    )
-    del align_model
-    _free_gpu()
-
-    logger.info("Diarisation — identification des locuteurs…")
-    try:
-        diarizer = DiarizationPipeline(
-            model_name=DIARIZATION_MODEL, token=token, device=options.device
+    with steps.step("Horodatage des mots") as report:
+        align_model, metadata = whisperx.load_align_model(
+            language_code=language, device=options.device
         )
-    except Exception as exc:  # noqa: BLE001 — toute cause remonte le même diagnostic
-        raise DiarizationAccessError from exc
+        result = whisperx.align(
+            result["segments"],
+            align_model,
+            metadata,
+            audio,
+            options.device,
+            progress_callback=report,
+        )
+        del align_model
+        _free_gpu()
 
-    diarization = diarizer(
-        audio,
-        num_speakers=options.num_speakers,
-        min_speakers=options.min_speakers,
-        max_speakers=options.max_speakers,
-        progress_callback=_progress_logger("diarisation"),
-    )
-    del diarizer
-    _free_gpu()
+    with steps.step("Diarisation") as report:
+        try:
+            diarizer = DiarizationPipeline(
+                model_name=DIARIZATION_MODEL, token=token, device=options.device
+            )
+        except Exception as exc:  # noqa: BLE001 — toute cause remonte le même diagnostic
+            raise DiarizationAccessError from exc
 
-    logger.info("Attribution des locuteurs aux mots…")
-    result = assign_word_speakers(diarization, result, fill_nearest=options.fill_nearest)
+        diarization = diarizer(
+            audio,
+            num_speakers=options.num_speakers,
+            min_speakers=options.min_speakers,
+            max_speakers=options.max_speakers,
+            progress_callback=report,
+        )
+        del diarizer
+        _free_gpu()
+
+    with steps.step("Attribution des locuteurs"):
+        result = assign_word_speakers(diarization, result, fill_nearest=options.fill_nearest)
     return _to_turns(result["segments"]), language

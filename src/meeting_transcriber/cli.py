@@ -12,11 +12,13 @@ import time
 from pathlib import Path
 
 from dotenv import find_dotenv, load_dotenv
+from rich.markup import escape
 
 from meeting_transcriber import render
+from meeting_transcriber.console import console, setup_logging
 from meeting_transcriber.pipeline import AUTO_LANGUAGE, Options, TranscriberError, run
 
-logger = logging.getLogger("transcribe")
+logger = logging.getLogger(__name__)
 
 TOKEN_HELP = (
     "Jeton Hugging Face absent. Crée-en un (droit « Read ») sur "
@@ -172,6 +174,34 @@ def _audio_duration(path: Path) -> float:
         return 0.0
 
 
+def _speakers_hint(args: argparse.Namespace) -> str:
+    if args.speakers is not None:
+        return str(args.speakers)
+    if args.min_speakers is not None and args.max_speakers is not None:
+        return f"entre {args.min_speakers} et {args.max_speakers}"
+    if args.min_speakers is not None:
+        return f"au moins {args.min_speakers}"
+    if args.max_speakers is not None:
+        return f"au plus {args.max_speakers}"
+    return "estimés [dim](--speakers N améliore nettement le résultat)[/]"
+
+
+def _plural(count: int, word: str) -> str:
+    return f"{count} {word}{'s' if count > 1 else ''}"
+
+
+def _print_summary(merged: list[render.Turn], elapsed: float, written: Path) -> None:
+    speakers = render.speakers_in(merged)
+    known = [speaker for speaker in speakers if speaker != render.UNKNOWN_SPEAKER]
+    unknown = " + passages non attribués" if len(known) < len(speakers) else ""
+    console.print()
+    console.print(f"[bold green]✓ Terminé en {render.format_duration(elapsed)}[/]")
+    console.print(
+        f"  {_plural(len(merged), 'tour')} de parole · {_plural(len(known), 'locuteur')}{unknown}"
+    )
+    console.print(f"  → {escape(str(written))}", soft_wrap=True)
+
+
 def _write_output(
     merged: list[render.Turn], args: argparse.Namespace, duration: float, language: str
 ) -> Path:
@@ -191,9 +221,7 @@ def _write_output(
 
 def main(argv: list[str] | None = None) -> int:
     _use_utf8_console()
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s  %(message)s", datefmt="%H:%M:%S"
-    )
+    setup_logging()
     # Depuis le dossier courant, pas depuis celui du code : installé via
     # `uv tool install`, le paquet vit dans un environnement isolé.
     load_dotenv(find_dotenv(usecwd=True))
@@ -201,20 +229,17 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         token = _validate(args)
-        device, compute_type = _resolve_device(args.device, args.compute_type)
-
-        if args.speakers is None and args.min_speakers is None and args.max_speakers is None:
-            logger.info(
-                "Nombre d'intervenants non précisé : pyannote l'estimera. "
-                "--speakers N améliore nettement le résultat si tu le connais."
-            )
-
         duration = _audio_duration(args.audio)
-        logger.info(
-            "Fichier : %s (%s)",
-            args.audio.name,
-            render.format_duration(duration) if duration else "durée inconnue",
+        console.print(
+            f"[bold]{escape(args.audio.name)}[/] · "
+            + (render.format_duration(duration) if duration else "durée inconnue")
         )
+        device, compute_type = _resolve_device(args.device, args.compute_type)
+        console.print(
+            f"  {escape(args.model)} · {escape(args.language)} · {device} ({compute_type})"
+        )
+        console.print(f"  Intervenants : {_speakers_hint(args)}")
+        console.print()
 
         started = time.monotonic()
         raw, language = run(
@@ -243,16 +268,7 @@ def main(argv: list[str] | None = None) -> int:
         merged = render.merge_turns(raw, max_gap=args.max_gap)
         written = _write_output(merged, args, duration, language)
 
-        speakers = render.speakers_in(merged)
-        logger.info("Terminé en %s.", render.format_duration(elapsed))
-        logger.info(
-            "%d segments, %d tours de parole, %d locuteurs : %s",
-            len(raw),
-            len(merged),
-            len(speakers),
-            ", ".join(speakers),
-        )
-        logger.info("  écrit → %s", written)
+        _print_summary(merged, elapsed, written)
         return 0
 
     except TranscriberError as error:
