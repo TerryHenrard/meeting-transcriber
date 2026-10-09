@@ -99,6 +99,30 @@ mais demande un compte :
 
 ## Utilisation
 
+Le plus simple : lance `transcribe` sans argument et réponds aux questions.
+
+```
+$ transcribe
+Transcription d'une réunion
+Entrée = valeur entre [crochets] · Ctrl+C pour quitter
+
+Fichier audio (glisse-le ici) : "C:\Users\moi\Documents\reunion.m4a"
+Nombre d'intervenants (si tu le connais) [auto] : 4
+Langue (en, de… ou auto) [fr] :
+
+reunion.m4a · 43 min 56 s
+  large-v3 · fr · cuda (float16)
+  Intervenants : 4
+Lancer la transcription ? [O/n] :
+```
+
+Le fichier peut être glissé-déposé dans le terminal, et Entrée garde la valeur
+proposée entre crochets. Les autres réglages
+(voir [Options](#options)) se passent toujours en option, par exemple
+`transcribe --model medium`.
+
+Pour un script ou un traitement par lots, donne directement le fichier :
+
 ```bash
 transcribe "reunion.m4a"
 ```
