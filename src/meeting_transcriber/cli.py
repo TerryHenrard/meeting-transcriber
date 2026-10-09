@@ -14,7 +14,7 @@ from pathlib import Path
 from dotenv import find_dotenv, load_dotenv
 from rich.markup import escape
 
-from meeting_transcriber import render
+from meeting_transcriber import prompts, render
 from meeting_transcriber.console import console, setup_logging
 from meeting_transcriber.pipeline import AUTO_LANGUAGE, Options, TranscriberError, run
 
@@ -43,7 +43,12 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         description="Transcrit une réunion audio en identifiant les locuteurs.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("audio", type=Path, help="fichier audio (.m4a, .mp3, .wav…)")
+    parser.add_argument(
+        "audio",
+        nargs="?",
+        type=Path,
+        help="fichier audio (.m4a, .mp3, .wav…) ; sans fichier, les réglages sont demandés",
+    )
     parser.add_argument(
         "--out",
         type=Path,
@@ -85,17 +90,14 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         action="store_true",
         help="attribuer au locuteur le plus proche plutôt que de laisser « ? »",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.audio is None and not sys.stdin.isatty():
+        parser.error("fichier audio manquant (les questions demandent un terminal interactif)")
+    return args
 
 
-def _validate(args: argparse.Namespace) -> str:
-    """Contrôles instantanés, avant tout chargement de modèle."""
-    if not args.audio.is_file():
-        raise TranscriberError(f"Fichier introuvable : {args.audio}")
-
-    if args.speakers is not None and (args.min_speakers or args.max_speakers):
-        raise TranscriberError("--speakers et --min/--max-speakers sont exclusifs.")
-
+def _check_environment() -> str:
+    """Contrôles instantanés, avant les questions et tout chargement de modèle."""
     if shutil.which("ffmpeg") is None:
         raise TranscriberError(
             "ffmpeg introuvable dans le PATH : indispensable pour décoder l'audio."
@@ -106,6 +108,14 @@ def _validate(args: argparse.Namespace) -> str:
         raise TranscriberError(TOKEN_HELP)
 
     return token
+
+
+def _validate(args: argparse.Namespace) -> None:
+    if not args.audio.is_file():
+        raise TranscriberError(f"Fichier introuvable : {args.audio}")
+
+    if args.speakers is not None and (args.min_speakers or args.max_speakers):
+        raise TranscriberError("--speakers et --min/--max-speakers sont exclusifs.")
 
 
 def _gpu_supported(capability: tuple[int, int], arch_list: list[str]) -> bool:
@@ -226,9 +236,13 @@ def main(argv: list[str] | None = None) -> int:
     # `uv tool install`, le paquet vit dans un environnement isolé.
     load_dotenv(find_dotenv(usecwd=True))
     args = _parse_args(argv)
+    interactive = args.audio is None
 
     try:
-        token = _validate(args)
+        token = _check_environment()
+        if interactive:
+            prompts.ask(args)
+        _validate(args)
         duration = _audio_duration(args.audio)
         console.print(
             f"[bold]{escape(args.audio.name)}[/] · "
@@ -239,6 +253,9 @@ def main(argv: list[str] | None = None) -> int:
             f"  {escape(args.model)} · {escape(args.language)} · {device} ({compute_type})"
         )
         console.print(f"  Intervenants : {_speakers_hint(args)}")
+        if interactive and not prompts.confirm_start():
+            console.print("Annulé.", style="dim")
+            return 0
         console.print()
 
         started = time.monotonic()
@@ -274,6 +291,9 @@ def main(argv: list[str] | None = None) -> int:
     except TranscriberError as error:
         logger.error("%s", error)
         return 1
+    except prompts.Cancelled:
+        console.print("Annulé.", style="dim")
+        return 130
     except KeyboardInterrupt:
         logger.error("Interrompu.")
         return 130
