@@ -1,6 +1,6 @@
 [project]
 name = "meeting-transcriber"
-version = "0.2.0"
+version = "0.3.0"
 description = "Transcription locale de réunions audio, avec identification des locuteurs"
 readme = "README.md"
 license = "MIT"
