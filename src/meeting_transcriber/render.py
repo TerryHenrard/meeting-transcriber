@@ -57,13 +57,15 @@ def format_timestamp(seconds: float) -> str:
 
 
 def format_duration(seconds: float) -> str:
-    """Durée lisible, p. ex. « 43 min 56 s » ou « 1 h 12 min 03 s »."""
+    """Durée lisible, p. ex. « 21 s », « 43 min 56 s » ou « 1 h 12 min 03 s »."""
     whole = int(max(0.0, seconds))
     hours, remainder = divmod(whole, 3600)
     minutes, secs = divmod(remainder, 60)
     if hours:
         return f"{hours} h {minutes:02d} min {secs:02d} s"
-    return f"{minutes} min {secs:02d} s"
+    if minutes:
+        return f"{minutes} min {secs:02d} s"
+    return f"{secs} s"
 
 
 def speakers_in(turns: Iterable[Turn]) -> list[str]:

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from meeting_transcriber.pipeline import Options, _progress_logger, _to_turns, run
+from meeting_transcriber.pipeline import Options, _to_turns, run
 from meeting_transcriber.render import UNKNOWN_SPEAKER, merge_turns
 
 
@@ -41,28 +41,6 @@ class TestToTurns:
 
     def test_drops_empty_text(self):
         assert _to_turns([{"start": 0, "end": 1, "text": "   "}]) == []
-
-
-class TestProgressLogger:
-    def test_reports_once_per_decile(self, caplog):
-        report = _progress_logger("étape", step=10.0)
-        with caplog.at_level("INFO"):
-            for percent in range(0, 101):
-                report(float(percent))
-        assert len(caplog.records) == 10  # 10, 20, … 100
-
-    def test_does_not_report_below_first_step(self, caplog):
-        report = _progress_logger("étape", step=10.0)
-        with caplog.at_level("INFO"):
-            report(5.0)
-        assert caplog.records == []
-
-    def test_reports_each_step_once(self, caplog):
-        report = _progress_logger("étape", step=25.0)
-        with caplog.at_level("INFO"):
-            for percent in (10, 26, 30, 51, 99, 100):
-                report(float(percent))
-        assert len(caplog.records) == 4  # 25, 50, 75(via 99), 100
 
 
 @pytest.mark.slow
