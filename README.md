@@ -183,6 +183,11 @@ n'ont pas été acceptées avec le compte qui a créé le jeton.
 **« CUDA indisponible : bascule sur le CPU »** alors que tu as une carte
 NVIDIA : mets à jour le pilote NVIDIA.
 
+**« n'est pas prise en charge par PyTorch »** ou **`no kernel image is available
+for execution on the device`** : l'installation date d'avant la prise en charge
+des cartes récentes (RTX 50xx). Mets à jour l'outil :
+`uv tool install --reinstall git+https://github.com/TerryHenrard/meeting-transcriber`.
+
 **Erreur de mémoire GPU (`CUDA out of memory`)** : relance avec
 `--batch-size 4`, ou un modèle plus léger (`--model medium`).
 
